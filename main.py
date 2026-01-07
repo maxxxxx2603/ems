@@ -255,8 +255,7 @@ QUESTIONS = [
     "👍 **Qualités**\nDonnez-nous 3 qualités qui vous caractérisent",
     "⚠️ **Défauts**\nDonnez-nous 3 défauts qui vous caractérisent",
     "📅 **Disponibilités - Semaine**\nDu lundi au vendredi : [Horaire]",
-    "📅 **Disponibilités - Week-end**\nWeek-end : [Horaire]",
-    "🪪 **Pièces jointes**\n[Carte d'identité et Permis de conduire en pièce jointe]"
+    "📅 **Disponibilités - Week-end**\nWeek-end : [Horaire]"
 ]
 
 # --- SYSTÈME DE CV ---
@@ -477,14 +476,13 @@ class CVButton(discord.ui.View):
         
         # Documents
         docs = discord.Embed(
-            title="📎 PIÈCES JOINTES REQUISES",
+            title="📎 DERNIÈRE ÉTAPE",
             description=(
                 "Merci d'avoir complété le formulaire ! 🎉\n\n"
-                "**Veuillez envoyer vos pièces jointes :**\n"
-                "1️⃣ 🆔 Carte d'identité ou passeport\n"
-                "2️⃣ 📄 CV (recommandé)\n"
-                "3️⃣ 🚗 Permis de conduire (si applicable)\n"
-                "4️⃣ 📜 Diplômes/Certifications (si applicable)\n\n"
+                "**Il ne manque plus que :**\n"
+                "🆔 Votre carte d'identité\n"
+                "🚗 Votre permis de conduire\n\n"
+                "Envoyez-les ci-dessous et nous nous en chargerons ! 🚑\n\n"
                 "⏱️ Vous avez un temps illimité pour envoyer les documents."
             ),
             color=EMS_RED
