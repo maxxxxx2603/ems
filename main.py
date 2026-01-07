@@ -285,16 +285,14 @@ class ReviewView(discord.ui.View):
                 pass
         
         # DM
-        dispo_channel = bot.get_channel(config.get("DISPO_CHANNEL_ID"))
-        dispo_mention = f"<#{config.get('DISPO_CHANNEL_ID')}>" if dispo_channel else "le channel des disponibilités"
-        
         try:
             await self.target_user.send(
                 f"🎉 **FÉLICITATIONS !**\n\n"
                 f"✅ Votre candidature a été **ACCEPTÉE** !\n\n"
                 f"Bienvenue dans la famille des **EMS** ! 🚑\n\n"
                 f"📝 **Prochaine étape :**\n"
-                f"Merci de mettre vos disponibilités dans {dispo_mention}\n"
+                f"Merci de mettre vos disponibilités ici :\n"
+                f"https://discord.com/channels/838102445083197470/1451553241065193555\n\n"
                 f"et nous nous chargeons du reste !\n\n"
                 f"Cordialement,\n**La Direction des EMS** 🚑"
             )
