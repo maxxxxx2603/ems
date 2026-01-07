@@ -280,37 +280,25 @@ async def semaine(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed_confirm)
 
 # --- COMMANDE TAXI ---
-@bot.tree.command(name="taxi", description="Affiche les statistiques des tests d'aptitude de la semaine")
+@bot.tree.command(name="taxi", description="Affiche le compteur des tests d'aptitude taxi")
+@app_commands.checks.has_permissions(administrator=True)
 async def taxi(interaction: discord.Interaction):
-    # Vérifier si on est dans le bon channel
-    if interaction.channel_id != TAXI_CHANNEL_ID:
-        await interaction.response.send_message(
-            "❌ Cette commande ne peut être utilisée que dans le channel taxi !",
-            ephemeral=True
-        )
-        return
-    
     await interaction.response.defer()
     
-    taxi_stats = load_taxi_stats()
-    count = taxi_stats.get("count", 0)
-    week_start = taxi_stats.get("week_start", datetime.now().isoformat())
-    
     try:
-        week_start_date = datetime.fromisoformat(week_start)
-        week_start_str = week_start_date.strftime("%d/%m/%Y")
+        with open('taxi_stats.json', 'r', encoding='utf-8') as f:
+            taxi_data = json.load(f)
     except:
-        week_start_str = "N/A"
+        taxi_data = {"test_aptitude_taxi": 0}
+    
+    test_count = taxi_data.get("test_aptitude_taxi", 0)
     
     embed = discord.Embed(
-        title="🚕 STATISTIQUES TAXI - CETTE SEMAINE",
-        description=f"**📊 Tests d'aptitude effectués**\n\n🔢 **Total :** `{count}` tests",
-        color=discord.Color.gold()
+        title="🚕 Tests d'Aptitude Taxi",
+        description=f"**Nombre de tests complétés :** {test_count}",
+        color=EMS_RED
     )
-    embed.add_field(name="📅 Début de semaine", value=week_start_str, inline=True)
-    embed.add_field(name="💰 Revenus générés", value=f"`{count * 500000:,.0f}$`".replace(",", " "), inline=True)
-    embed.set_footer(text="🚕 Taxi Management System | Continuez comme ça !")
-    
+    embed.set_footer(text="🚑 EMS System")
     await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="taxi_announce", description="Envoie manuellement l'annonce hebdomadaire taxi et reset les stats")
