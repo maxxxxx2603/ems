@@ -542,22 +542,13 @@ class CVButton(discord.ui.View):
             cv_embed.set_footer(text=f"🚑 EMS System | ID: {user_id}")
             
             view = ReviewView(interaction.user)
-            msg = await cv_channel.send(embed=cv_embed, view=view)
-            view.message = msg
             
-            # Ping direction
+            # Ping direction directement dans le message du CV
             direction_role = guild.get_role(config.get("ROLE_DIRECTION_ID"))
-            if direction_role and config.get("ROLE_DIRECTION_ID") != 0:
-                ping = discord.Embed(
-                    title="📋 Nouveau CV",
-                    description=f"{direction_role.mention}",
-                    color=EMS_RED
-                )
-                ping.set_footer(text="🚑 EMS System")
-                try:
-                    await cv_channel.send(embed=ping)
-                except:
-                    pass
+            ping_content = direction_role.mention if direction_role and config.get("ROLE_DIRECTION_ID") != 0 else None
+            
+            msg = await cv_channel.send(content=ping_content, embed=cv_embed, view=view)
+            view.message = msg
         
         # Nettoyer
         await asyncio.sleep(120)
