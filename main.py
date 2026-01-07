@@ -1,9 +1,10 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
 import os
 import asyncio
+from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
 # Support à la fois config.json (local) et variables d'environnement (Railway)
@@ -23,6 +24,12 @@ else:
     }
 
 STATS_FILE = 'stats.json'
+TAXI_STATS_FILE = 'taxi_stats.json'
+
+# Configuration Taxi
+TAXI_CHANNEL_ID = 1457304629456011264
+ROLE_DIRECTION_EMS_ID = 838120186585940010
+ROLE_DIRECTION_TAXI_ID = 1311787019546136596
 
 # Cooldown pour réactions
 processed_reactions = set()
@@ -42,6 +49,8 @@ class EMSBot(commands.Bot):
     async def setup_hook(self):
         await self.tree.sync()
         self.add_view(CVButton())
+        # Démarrer la tâche automatisée pour les annonces taxi
+        weekly_taxi_announcement.start()
 
 bot = EMSBot()
 
@@ -77,11 +86,40 @@ def get_color_emoji(count):
     else:
         return "🔴"
 
-# --- SYSTEME DE RÉACTIONS ---
+# --- GESTION DES STATS TAXI ---
+def load_taxi_stats():
+    if not os.path.exists(TAXI_STATS_FILE):
+        return {"count": 0, "week_start": datetime.now().isoformat()}
+    try:
+        with open(TAXI_STATS_FILE, 'r', encoding='utf-8') as f:
+            data = f.read().strip()
+            if not data:
+                return {"count": 0, "week_start": datetime.now().isoformat()}
+            return json.loads(data)
+    except:
+        return {"count": 0, "week_start": datetime.now().isoformat()}
+
+def save_taxi_stats(stats):
+    with open(TAXI_STATS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(stats, f, ensure_ascii=False, indent=2)
+
+def reset_taxi_week():
+    """Réinitialise les stats taxi pour la nouvelle semaine"""
+    stats = {"count": 0, "week_start": datetime.now().isoformat()}
+    save_taxi_stats(stats)
+    return stats
+
+# --- SYSTEME DE RÉACTIONS ET COMPTAGE TAXI ---
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
+    
+    # Comptage des messages dans le channel taxi (pour /taxi)
+    if message.channel.id == TAXI_CHANNEL_ID:
+        taxi_stats = load_taxi_stats()
+        taxi_stats["count"] += 1
+        save_taxi_stats(taxi_stats)
 
     if not message.attachments or not message.channel.name:
         return
@@ -240,6 +278,51 @@ async def semaine(interaction: discord.Interaction):
     )
     embed_confirm.set_footer(text="🚑 EMS System")
     await interaction.followup.send(embed=embed_confirm)
+
+# --- COMMANDE TAXI ---
+@bot.tree.command(name="taxi", description="Affiche les statistiques des tests d'aptitude de la semaine")
+async def taxi(interaction: discord.Interaction):
+    # Vérifier si on est dans le bon channel
+    if interaction.channel_id != TAXI_CHANNEL_ID:
+        await interaction.response.send_message(
+            "❌ Cette commande ne peut être utilisée que dans le channel taxi !",
+            ephemeral=True
+        )
+        return
+    
+    await interaction.response.defer()
+    
+    taxi_stats = load_taxi_stats()
+    count = taxi_stats.get("count", 0)
+    week_start = taxi_stats.get("week_start", datetime.now().isoformat())
+    
+    try:
+        week_start_date = datetime.fromisoformat(week_start)
+        week_start_str = week_start_date.strftime("%d/%m/%Y")
+    except:
+        week_start_str = "N/A"
+    
+    embed = discord.Embed(
+        title="🚕 STATISTIQUES TAXI - CETTE SEMAINE",
+        description=f"**📊 Tests d'aptitude effectués**\n\n🔢 **Total :** `{count}` tests",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="📅 Début de semaine", value=week_start_str, inline=True)
+    embed.add_field(name="💰 Revenus générés", value=f"`{count * 500000:,.0f}$`".replace(",", " "), inline=True)
+    embed.set_footer(text="🚕 Taxi Management System | Continuez comme ça !")
+    
+    await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="taxi_announce", description="Envoie manuellement l'annonce hebdomadaire taxi et reset les stats")
+@app_commands.checks.has_permissions(administrator=True)
+async def taxi_announce(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        await send_weekly_taxi_announcement()
+        await interaction.followup.send("✅ Annonce hebdomadaire envoyée et compteurs réinitialisés !", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
 
 # --- QUESTIONS DU CV ---
 QUESTIONS = [
@@ -585,6 +668,84 @@ async def on_ready():
     print(f'✅ Bot: {bot.user}')
     stats = load_stats()
     print(f'📊 Stats: {stats if stats else "Aucune"}')
+
+# --- TÂCHE AUTOMATISÉE HEBDOMADAIRE TAXI ---
+@tasks.loop(hours=1)
+async def weekly_taxi_announcement():
+    """Vérifie si c'est samedi 19h et envoie l'annonce hebdomadaire"""
+    now = datetime.now()
+    
+    # Vérifier si c'est samedi (weekday() == 5) et qu'il est 19h
+    if now.weekday() == 5 and now.hour == 19:
+        await send_weekly_taxi_announcement()
+
+@weekly_taxi_announcement.before_loop
+async def before_weekly_announcement():
+    await bot.wait_until_ready()
+
+async def send_weekly_taxi_announcement():
+    """Envoie l'annonce hebdomadaire et réinitialise les compteurs"""
+    guild = bot.get_guild(config.get("GUILD_ID"))
+    if not guild:
+        return
+    
+    taxi_channel = bot.get_channel(TAXI_CHANNEL_ID)
+    if not taxi_channel:
+        return
+    
+    # Charger les stats de la semaine
+    taxi_stats = load_taxi_stats()
+    count = taxi_stats.get("count", 0)
+    revenus = count * 500000
+    
+    # Créer l'annonce
+    embed = discord.Embed(
+        title="🚕 RAPPORT HEBDOMADAIRE TAXI",
+        description="**📊 Bilan de la semaine**\n\n",
+        color=discord.Color.gold()
+    )
+    
+    embed.add_field(
+        name="👥 Employés acceptés",
+        value=f"```{count} employé(s)```",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💰 Revenus générés",
+        value=f"```{revenus:,.0f}$```".replace(",", " "),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📈 Performance",
+        value=f"Cette semaine, nous avons accepté **{count}** employé(s) !\n"
+              f"Cela représente un revenu total de **{revenus:,.0f}$** 💵".replace(",", " "),
+        inline=False
+    )
+    
+    embed.set_footer(text="🚕 Taxi Management System | Nouvelle semaine qui commence !")
+    embed.timestamp = datetime.now()
+    
+    # Ping les rôles de direction
+    role_ems = guild.get_role(ROLE_DIRECTION_EMS_ID)
+    role_taxi = guild.get_role(ROLE_DIRECTION_TAXI_ID)
+    
+    ping_text = ""
+    if role_ems:
+        ping_text += f"{role_ems.mention} "
+    if role_taxi:
+        ping_text += f"{role_taxi.mention}"
+    
+    # Envoyer l'annonce
+    try:
+        await taxi_channel.send(content=ping_text, embed=embed)
+    except Exception as e:
+        print(f"Erreur lors de l'envoi de l'annonce taxi : {e}")
+    
+    # Réinitialiser les stats pour la nouvelle semaine
+    reset_taxi_week()
+    print(f"✅ Annonce hebdomadaire taxi envoyée et compteurs réinitialisés")
 
 if __name__ == "__main__":
     try:
