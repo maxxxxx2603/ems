@@ -244,10 +244,22 @@ async def total(interaction: discord.Interaction):
         current_embed.add_field(name=f"{emoji} {name}", value=f"{count}/100", inline=False)
         field_count += 1
     
-    # Ajouter le dernier embed
+    # Ajouter le dernier embed avec le footer
     if current_embed:
         current_embed.set_footer(text="🚑 EMS System")
         embeds.append(current_embed)
+    
+    # Calculer le total des réactions
+    total_reactions = sum(stats.values())
+    
+    # Ajouter un dernier embed avec le résumé
+    summary_embed = discord.Embed(
+        title="📊 RÉSUMÉ DE CETTE SEMAINE",
+        description=f"**Total des réactions :** `{total_reactions}` 🎯",
+        color=EMS_RED
+    )
+    summary_embed.set_footer(text="🚑 EMS System")
+    embeds.append(summary_embed)
     
     # Envoyer tous les embeds
     for embed in embeds:
@@ -319,6 +331,44 @@ async def semaine(interaction: discord.Interaction):
     )
     embed_confirm.set_footer(text="🚑 EMS System")
     await interaction.followup.send(embed=embed_confirm)
+
+@bot.tree.command(name="sync_colors", description="Synchronise les couleurs des channels avec les stats actuelles")
+@app_commands.checks.has_permissions(administrator=True)
+async def sync_colors(interaction: discord.Interaction):
+    """Force la mise à jour de la couleur des channels en fonction des stats"""
+    await interaction.response.defer()
+    
+    guild = interaction.guild
+    stats = load_stats()
+    
+    updated_count = 0
+    
+    for channel in guild.text_channels:
+        if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
+            # Extraire le nom de l'employé
+            employee_name = channel.name[1:].strip()
+            
+            # Obtenir le nombre de réactions
+            count = stats.get(employee_name, 0)
+            new_emoji = get_color_emoji(count)
+            current_emoji = channel.name[0]
+            
+            # Si l'emoji doit changer
+            if current_emoji != new_emoji:
+                new_name = f"{new_emoji}{channel.name[1:]}"
+                try:
+                    await channel.edit(name=new_name)
+                    updated_count += 1
+                except:
+                    pass
+    
+    embed = discord.Embed(
+        title="🚑 ✅ SYNCHRONISATION EFFECTUÉE",
+        description=f"✅ {updated_count} channel(s) ont été mis à jour\n\nLes couleurs sont maintenant synchronisées avec les stats !",
+        color=EMS_RED
+    )
+    embed.set_footer(text="🚑 EMS System")
+    await interaction.followup.send(embed=embed)
 
 # --- COMMANDE TAXI ---
 @bot.tree.command(name="taxi", description="Affiche le compteur des tests d'aptitude taxi")
