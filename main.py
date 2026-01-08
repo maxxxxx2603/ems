@@ -544,6 +544,9 @@ class ReviewView(discord.ui.View):
             await interaction.followup.send("❌ Le candidat n'est plus sur le serveur.", ephemeral=True)
             return
         
+        # Répondre immédiatement pour éviter timeout
+        await interaction.followup.send(f"✅ **{member.display_name}** accepté ! Traitement en cours...", ephemeral=True)
+        
         role = guild.get_role(config.get("ROLE_ATTENTE_ID"))
         
         # Ajouter rôle
@@ -623,8 +626,6 @@ class ReviewView(discord.ui.View):
                 await self.message.edit(view=self)
             except Exception as e:
                 print(f"Erreur désactivation boutons: {e}")
-        
-        await interaction.followup.send(f"✅ **{member.display_name}** a été accepté avec succès !", ephemeral=True)
 
     @discord.ui.button(label="❌ Refuser", style=discord.ButtonStyle.red, custom_id="refuse_cv")
     async def refuse(self, interaction: discord.Interaction, button: discord.ui.Button):
