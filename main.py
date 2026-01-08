@@ -808,6 +808,37 @@ async def on_ready():
     print(f'✅ Bot: {bot.user}')
     stats = load_stats()
     print(f'📊 Stats: {stats if stats else "Aucune"}')
+    
+    # Synchroniser automatiquement les couleurs au démarrage
+    try:
+        guild = bot.get_guild(config.get("GUILD_ID"))
+        if guild:
+            badges = load_badges()
+            for channel in guild.text_channels:
+                if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
+                    employee_name = channel.name[1:].strip()
+                    count = stats.get(employee_name, 0)
+                    
+                    if count >= 100:
+                        new_emoji = "🟢"
+                    elif count >= 50:
+                        new_emoji = "🟠"
+                    elif employee_name in badges:
+                        new_emoji = badges[employee_name]
+                    else:
+                        new_emoji = "🔴"
+                    
+                    current_emoji = channel.name[0]
+                    
+                    if current_emoji != new_emoji:
+                        new_name = f"{new_emoji}{channel.name[1:]}"
+                        try:
+                            await channel.edit(name=new_name)
+                            print(f"🔄 Couleur mise à jour : {employee_name}")
+                        except:
+                            pass
+    except Exception as e:
+        print(f"Erreur lors de la synchronisation des couleurs : {e}")
 
 # --- TÂCHE AUTOMATISÉE HEBDOMADAIRE TAXI ---
 @tasks.loop(hours=1)
