@@ -225,12 +225,13 @@ async def total(interaction: discord.Interaction):
     
     for name, count in sorted_stats:
         if field_count >= 25:
+            # Ajouter l'embed courant à la liste AVANT de créer un nouveau
+            embeds.append(current_embed)
             # Créer un nouvel embed
             current_embed = discord.Embed(
                 title=f"🚑 📊 Statistiques (suite)",
                 color=EMS_RED
             )
-            embeds.append(current_embed)
             field_count = 0
         
         if current_embed is None:
@@ -243,6 +244,7 @@ async def total(interaction: discord.Interaction):
         current_embed.add_field(name=f"{emoji} {name}", value=f"{count}/100", inline=False)
         field_count += 1
     
+    # Ajouter le dernier embed
     if current_embed:
         current_embed.set_footer(text="🚑 EMS System")
         embeds.append(current_embed)
