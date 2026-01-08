@@ -269,13 +269,13 @@ async def on_message(message):
             except:
                 pass
         
-        # Envoyer log simplifié
+        # Envoyer log avec total courant après incrément
         log_channel = bot.get_channel(config.get("LOGS_CHANNEL_ID"))
         if log_channel:
             new_emoji = get_color_emoji(current_count)
-            
-            # Message simple et normal (affiche la clé normalisée)
-            message_text = f"✅ **{employee_key}** | {current_count} réas"
+            # Afficher un nom lisible et le nouveau total
+            display_name = ' '.join([p.capitalize() for p in employee_key.split('-')])
+            message_text = f"✅ **{display_name}** — +1 (Total: {current_count})"
             
             try:
                 await log_channel.send(message_text)
