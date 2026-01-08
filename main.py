@@ -25,6 +25,7 @@ else:
 
 STATS_FILE = 'stats.json'
 TAXI_STATS_FILE = 'taxi_stats.json'
+BADGES_FILE = 'badges.json'
 
 # Configuration Taxi
 TAXI_CHANNEL_ID = 1456000685190418514
@@ -71,6 +72,35 @@ def load_stats():
 def save_stats(stats):
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats, f, ensure_ascii=False, indent=2)
+
+def load_badges():
+    """Charge les badges permanents (accomplissements)"""
+    if not os.path.exists(BADGES_FILE):
+        return {}
+    try:
+        with open(BADGES_FILE, 'r', encoding='utf-8') as f:
+            data = f.read().strip()
+            if not data:
+                return {}
+            return json.loads(data)
+    except:
+        return {}
+
+def save_badges(badges):
+    """Sauvegarde les badges permanents"""
+    with open(BADGES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(badges, f, ensure_ascii=False, indent=2)
+
+def update_badges(stats):
+    """Met à jour les badges en fonction des stats actuelles"""
+    badges = load_badges()
+    for name, count in stats.items():
+        if count >= 100:
+            badges[name] = "🟢"  # Badge or
+        elif count >= 50:
+            if name not in badges or badges[name] != "🟢":  # Ne pas descendre de 🟢 à 🟠
+                badges[name] = "🟠"
+    save_badges(badges)
 
 def extract_employee_name(channel_name):
     """Extrait le nom de l'employé du nom du channel"""
@@ -167,6 +197,7 @@ async def on_message(message):
         stats[employee_name] += 1
         current_count = stats[employee_name]
         save_stats(stats)
+        update_badges(stats)  # Mettre à jour les badges
         
         # Ajouter réaction
         try:
@@ -335,11 +366,12 @@ async def semaine(interaction: discord.Interaction):
 @bot.tree.command(name="sync_colors", description="Synchronise les couleurs des channels avec les stats actuelles")
 @app_commands.checks.has_permissions(administrator=True)
 async def sync_colors(interaction: discord.Interaction):
-    """Force la mise à jour de la couleur des channels en fonction des stats"""
+    """Force la mise à jour de la couleur des channels en fonction des stats et badges"""
     await interaction.response.defer()
     
     guild = interaction.guild
     stats = load_stats()
+    badges = load_badges()
     
     updated_count = 0
     
@@ -348,9 +380,19 @@ async def sync_colors(interaction: discord.Interaction):
             # Extraire le nom de l'employé
             employee_name = channel.name[1:].strip()
             
-            # Obtenir le nombre de réactions
+            # Priorité : stats actuelles > badges permanents
             count = stats.get(employee_name, 0)
-            new_emoji = get_color_emoji(count)
+            
+            if count >= 100:
+                new_emoji = "🟢"
+            elif count >= 50:
+                new_emoji = "🟠"
+            elif employee_name in badges:
+                # Utiliser le badge permanent si aucune stat actuelle
+                new_emoji = badges[employee_name]
+            else:
+                new_emoji = "🔴"
+            
             current_emoji = channel.name[0]
             
             # Si l'emoji doit changer
@@ -364,7 +406,7 @@ async def sync_colors(interaction: discord.Interaction):
     
     embed = discord.Embed(
         title="🚑 ✅ SYNCHRONISATION EFFECTUÉE",
-        description=f"✅ {updated_count} channel(s) ont été mis à jour\n\nLes couleurs sont maintenant synchronisées avec les stats !",
+        description=f"✅ {updated_count} channel(s) ont été mis à jour\n\nLes couleurs reflètent maintenant :\n• 🟢 = A atteint 100+ réactions\n• 🟠 = A atteint 50+ réactions\n• 🔴 = Moins de 50 réactions",
         color=EMS_RED
     )
     embed.set_footer(text="🚑 EMS System")
