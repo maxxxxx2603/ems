@@ -412,6 +412,63 @@ async def sync_colors(interaction: discord.Interaction):
     embed.set_footer(text="🚑 EMS System")
     await interaction.followup.send(embed=embed)
 
+@bot.tree.command(name="update_color", description="Mets à jour la couleur d'un channel spécifique")
+@app_commands.checks.has_permissions(administrator=True)
+async def update_color(interaction: discord.Interaction, employee_name: str):
+    """Met à jour la couleur d'un channel d'employé spécifique"""
+    await interaction.response.defer()
+    
+    guild = interaction.guild
+    stats = load_stats()
+    badges = load_badges()
+    
+    # Normaliser le nom de l'employé
+    search_name = employee_name.lower().strip()
+    
+    # Trouver le channel
+    found = False
+    for channel in guild.text_channels:
+        if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
+            channel_employee_name = channel.name[1:].strip().lower()
+            
+            if channel_employee_name == search_name:
+                found = True
+                
+                # Déterminer la nouvelle couleur
+                count = stats.get(channel.name[1:].strip(), 0)
+                
+                if count >= 100:
+                    new_emoji = "🟢"
+                elif count >= 50:
+                    new_emoji = "🟠"
+                elif channel.name[1:].strip() in badges:
+                    new_emoji = badges[channel.name[1:].strip()]
+                else:
+                    new_emoji = "🔴"
+                
+                current_emoji = channel.name[0]
+                
+                if current_emoji != new_emoji:
+                    new_name = f"{new_emoji}{channel.name[1:]}"
+                    try:
+                        await channel.edit(name=new_name)
+                        embed = discord.Embed(
+                            title="✅ COULEUR MISE À JOUR",
+                            description=f"Channel {channel.name[1:].strip()} → {new_emoji}",
+                            color=EMS_RED
+                        )
+                        embed.add_field(name="Réactions", value=f"{count}/100", inline=True)
+                        embed.set_footer(text="🚑 EMS System")
+                        await interaction.followup.send(embed=embed)
+                    except Exception as e:
+                        await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"✅ La couleur est déjà correcte ({current_emoji})", ephemeral=True)
+                break
+    
+    if not found:
+        await interaction.followup.send(f"❌ Employé '{employee_name}' non trouvé", ephemeral=True)
+
 # --- COMMANDE TAXI ---
 @bot.tree.command(name="taxi", description="Affiche le compteur des tests d'aptitude taxi")
 @app_commands.checks.has_permissions(administrator=True)
