@@ -538,18 +538,23 @@ class ReviewView(discord.ui.View):
         
         guild = interaction.guild
         member = guild.get_member(self.target_user.id)
+        
+        if not member:
+            await interaction.followup.send("❌ Le candidat n'est plus sur le serveur.", ephemeral=True)
+            return
+        
         role = guild.get_role(config.get("ROLE_ATTENTE_ID"))
         
         # Ajouter rôle
-        if member and role:
+        if role:
             try:
                 await member.add_roles(role)
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur ajout rôle: {e}")
         
         # DM
         try:
-            await self.target_user.send(
+            await member.send(
                 f"🎉 **FÉLICITATIONS !**\n\n"
                 f"✅ Votre candidature a été **ACCEPTÉE** !\n\n"
                 f"Bienvenue dans la famille des **EMS** ! 🚑\n\n"
@@ -559,15 +564,15 @@ class ReviewView(discord.ui.View):
                 f"et nous nous chargeons du reste !\n\n"
                 f"Cordialement,\n**La Direction des EMS** 🚑"
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"Erreur DM acceptation: {e}")
         
         # Log dans le channel de logs
         log_channel = bot.get_channel(config.get("LOGS_CHANNEL_ID"))
         if log_channel:
             embed = discord.Embed(
                 title="✅ CV ACCEPTÉ",
-                description=f"**Candidat :** {self.target_user.mention}\n**Validateur :** {interaction.user.mention}",
+                description=f"**Candidat :** {member.mention}\n**Validateur :** {interaction.user.mention}",
                 color=EMS_RED
             )
             embed.add_field(name="✅ Statut", value="Candidature approuvée ✓", inline=False)
@@ -575,15 +580,15 @@ class ReviewView(discord.ui.View):
             embed.set_footer(text="🚑 EMS System")
             try:
                 await log_channel.send(embed=embed)
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur log acceptation: {e}")
         
         # Envoyer aussi dans le channel CV
         cv_channel = bot.get_channel(config.get("CV_CHANNEL_ID"))
         if cv_channel:
             embed = discord.Embed(
                 title="✅ CV ACCEPTÉ",
-                description=f"**Candidat :** {self.target_user.mention}\n**Validateur :** {interaction.user.mention}",
+                description=f"**Candidat :** {member.mention}\n**Validateur :** {interaction.user.mention}",
                 color=EMS_RED
             )
             embed.add_field(name="✅ Statut", value="Candidature approuvée ✓", inline=False)
@@ -591,18 +596,18 @@ class ReviewView(discord.ui.View):
             embed.set_footer(text="🚑 EMS System")
             try:
                 await cv_channel.send(embed=embed)
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur CV channel acceptation: {e}")
         
         # Désactiver
         self.disable_all_items()
         if self.message:
             try:
                 await self.message.edit(view=self)
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur désactivation boutons: {e}")
         
-        await interaction.followup.send(f"✅ **{self.target_user.name}** a été accepté avec succès !", ephemeral=True)
+        await interaction.followup.send(f"✅ **{member.display_name}** a été accepté avec succès !", ephemeral=True)
 
     @discord.ui.button(label="❌ Refuser", style=discord.ButtonStyle.red, custom_id="refuse_cv")
     async def refuse(self, interaction: discord.Interaction, button: discord.ui.Button):
