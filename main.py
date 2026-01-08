@@ -27,7 +27,8 @@ STATS_FILE = 'stats.json'
 TAXI_STATS_FILE = 'taxi_stats.json'
 
 # Configuration Taxi
-TAXI_CHANNEL_ID = 1457304629456011264
+TAXI_CHANNEL_ID = 1456000685190418514
+TAXI_ROLE_ID = 1163206112355561472
 ROLE_DIRECTION_EMS_ID = 838120186585940010
 ROLE_DIRECTION_TAXI_ID = 1311787019546136596
 
@@ -115,8 +116,23 @@ async def on_message(message):
     if message.author.bot:
         return
     
-    # Comptage des messages dans le channel taxi (pour /taxi)
+    # Comptage automatique pour les tests d'aptitude taxi (réaction + comptage)
     if message.channel.id == TAXI_CHANNEL_ID:
+        # Vérifier si l'auteur a le rôle taxi
+        if any(role.id == TAXI_ROLE_ID for role in message.author.roles):
+            # Ajouter une réaction
+            try:
+                await message.add_reaction("✅")
+            except:
+                pass
+            
+            # Incrémenter le compteur
+            taxi_stats = load_taxi_stats()
+            taxi_stats["count"] += 1
+            save_taxi_stats(taxi_stats)
+    
+    # Comptage des autres messages dans le channel taxi (ancien système)
+    elif message.channel.id == TAXI_CHANNEL_ID:
         taxi_stats = load_taxi_stats()
         taxi_stats["count"] += 1
         save_taxi_stats(taxi_stats)
@@ -393,7 +409,7 @@ class ReviewView(discord.ui.View):
         except:
             pass
         
-        # Log
+        # Log dans le channel de logs
         log_channel = bot.get_channel(config.get("LOGS_CHANNEL_ID"))
         if log_channel:
             embed = discord.Embed(
@@ -406,6 +422,22 @@ class ReviewView(discord.ui.View):
             embed.set_footer(text="🚑 EMS System")
             try:
                 await log_channel.send(embed=embed)
+            except:
+                pass
+        
+        # Envoyer aussi dans le channel CV
+        cv_channel = bot.get_channel(config.get("CV_CHANNEL_ID"))
+        if cv_channel:
+            embed = discord.Embed(
+                title="✅ CV ACCEPTÉ",
+                description=f"**Candidat :** {self.target_user.mention}\n**Validateur :** {interaction.user.mention}",
+                color=EMS_RED
+            )
+            embed.add_field(name="✅ Statut", value="Candidature approuvée ✓", inline=False)
+            embed.add_field(name="👤 Rôle attribué", value="Attente d'onboarding", inline=False)
+            embed.set_footer(text="🚑 EMS System")
+            try:
+                await cv_channel.send(embed=embed)
             except:
                 pass
         
