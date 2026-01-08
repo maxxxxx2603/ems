@@ -17,6 +17,7 @@ else:
         "GUILD_ID": int(os.environ.get("GUILD_ID", 0)),
         "LOGS_CHANNEL_ID": int(os.environ.get("LOGS_CHANNEL_ID", 0)),
         "CV_CHANNEL_ID": int(os.environ.get("CV_CHANNEL_ID", 0)),
+        "CV_ACCEPTED_LOG_CHANNEL_ID": int(os.environ.get("CV_ACCEPTED_LOG_CHANNEL_ID", 0)),
         "DEPOT_CV_CHANNEL_ID": int(os.environ.get("DEPOT_CV_CHANNEL_ID", 0)),
         "ROLE_ATTENTE_ID": int(os.environ.get("ROLE_ATTENTE_ID", 0)),
         "DISPO_CHANNEL_ID": int(os.environ.get("DISPO_CHANNEL_ID", 0)),
@@ -599,6 +600,22 @@ class ReviewView(discord.ui.View):
             except Exception as e:
                 print(f"Erreur CV channel acceptation: {e}")
         
+        # Envoyer dans le channel de logs CV acceptés
+        cv_accepted_log = bot.get_channel(config.get("CV_ACCEPTED_LOG_CHANNEL_ID"))
+        if cv_accepted_log:
+            embed = discord.Embed(
+                title="✅ CV ACCEPTÉ",
+                description=f"**Candidat :** {member.mention}\n**Validateur :** {interaction.user.mention}",
+                color=EMS_RED
+            )
+            embed.add_field(name="✅ Statut", value="Candidature approuvée ✓", inline=False)
+            embed.add_field(name="👤 Rôle attribué", value="Attente d'onboarding", inline=False)
+            embed.set_footer(text="🚑 EMS System")
+            try:
+                await cv_accepted_log.send(embed=embed)
+            except Exception as e:
+                print(f"Erreur logs CV acceptés: {e}")
+        
         # Désactiver
         self.disable_all_items()
         if self.message:
@@ -642,15 +659,15 @@ class ReviewView(discord.ui.View):
             except:
                 pass
         
-        # Désactiver
+        # Désactiver et supprimer le message
         self.disable_all_items()
         if self.message:
             try:
-                await self.message.edit(view=self)
-            except:
-                pass
+                await self.message.delete()
+            except Exception as e:
+                print(f"Erreur suppression message CV refusé: {e}")
         
-        await interaction.followup.send(f"✅ {self.target_user.mention} refusé", ephemeral=True)
+        await interaction.followup.send(f"✅ {self.target_user.mention} refusé et message supprimé", ephemeral=True)
     
     def disable_all_items(self):
         for item in self.children:
