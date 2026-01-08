@@ -200,17 +200,40 @@ async def total(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
         return
     
-    embed = discord.Embed(
-        title="🚑 📊 Statistiques",
-        color=EMS_RED
-    )
+    sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
     
-    for name, count in sorted(stats.items(), key=lambda x: x[1], reverse=True):
+    # Créer plusieurs embeds si nécessaire (25 champs max par embed)
+    embeds = []
+    current_embed = None
+    field_count = 0
+    
+    for name, count in sorted_stats:
+        if field_count >= 25:
+            # Créer un nouvel embed
+            current_embed = discord.Embed(
+                title=f"🚑 📊 Statistiques (suite)",
+                color=EMS_RED
+            )
+            embeds.append(current_embed)
+            field_count = 0
+        
+        if current_embed is None:
+            current_embed = discord.Embed(
+                title="🚑 📊 Statistiques",
+                color=EMS_RED
+            )
+        
         emoji = get_color_emoji(count)
-        embed.add_field(name=f"{emoji} {name}", value=f"{count}/100", inline=False)
+        current_embed.add_field(name=f"{emoji} {name}", value=f"{count}/100", inline=False)
+        field_count += 1
     
-    embed.set_footer(text="🚑 EMS System")
-    await interaction.followup.send(embed=embed)
+    if current_embed:
+        current_embed.set_footer(text="🚑 EMS System")
+        embeds.append(current_embed)
+    
+    # Envoyer tous les embeds
+    for embed in embeds:
+        await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="reset", description="Réinitialise les compteurs")
 @app_commands.checks.has_permissions(administrator=True)
@@ -536,7 +559,10 @@ class CVButton(discord.ui.View):
                     color=EMS_DARK_RED
                 )
                 timeout_msg.set_footer(text="🚑 EMS System")
-                await channel.send(embed=timeout_msg)
+                try:
+                    await channel.send(embed=timeout_msg)
+                except:
+                    pass
                 await asyncio.sleep(3)
                 try:
                     await channel.delete()
