@@ -619,13 +619,13 @@ class ReviewView(discord.ui.View):
             except Exception as e:
                 print(f"Erreur logs CV acceptés: {e}")
         
-        # Désactiver
+        # Désactiver et supprimer le message
         self.disable_all_items()
         if self.message:
             try:
-                await self.message.edit(view=self)
+                await self.message.delete()
             except Exception as e:
-                print(f"Erreur désactivation boutons: {e}")
+                print(f"Erreur suppression message CV accepté: {e}")
 
     @discord.ui.button(label="❌ Refuser", style=discord.ButtonStyle.red, custom_id="refuse_cv")
     async def refuse(self, interaction: discord.Interaction, button: discord.ui.Button):
