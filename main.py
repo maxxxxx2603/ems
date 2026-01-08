@@ -25,7 +25,7 @@ else:
 
 STATS_FILE = 'stats.json'
 TAXI_STATS_FILE = 'taxi_stats.json'
-BADGES_FILE = 'badges.json'
+CHANNEL_MAP_FILE = 'channel_map.json'
 
 # Configuration Taxi
 TAXI_CHANNEL_ID = 1456000685190418514
@@ -69,43 +69,111 @@ def load_stats():
     except:
         return {}
 
-def save_stats(stats):
-    with open(STATS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
-
-def load_badges():
-    """Charge les badges permanents (accomplissements)"""
-    if not os.path.exists(BADGES_FILE):
-        return {}
+def atomic_write_json(path: str, data: dict, make_backup: bool = True):
+    tmp_path = f"{path}.tmp"
     try:
-        with open(BADGES_FILE, 'r', encoding='utf-8') as f:
-            data = f.read().strip()
-            if not data:
-                return {}
-            return json.loads(data)
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        # Ecrire/mettre à jour une sauvegarde simple
+        if make_backup:
+            try:
+                with open(f"{path}.bak", 'w', encoding='utf-8') as bf:
+                    json.dump(data, bf, ensure_ascii=False, indent=2)
+            except:
+                pass
+        os.replace(tmp_path, path)
+    except Exception:
+        # Nettoyage tmp si besoin
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except:
+            pass
+        raise
+
+def robust_load_json(path: str, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if not content:
+                raise ValueError("empty")
+            return json.loads(content)
     except:
-        return {}
+        # Essayer la sauvegarde .bak
+        bak = f"{path}.bak"
+        if os.path.exists(bak):
+            try:
+                with open(bak, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        return json.loads(content)
+            except:
+                pass
+        return default
 
-def save_badges(badges):
-    """Sauvegarde les badges permanents"""
-    with open(BADGES_FILE, 'w', encoding='utf-8') as f:
-        json.dump(badges, f, ensure_ascii=False, indent=2)
+def save_stats(stats):
+    atomic_write_json(STATS_FILE, stats)
 
-def update_badges(stats):
-    """Met à jour les badges en fonction des stats actuelles"""
-    badges = load_badges()
-    for name, count in stats.items():
-        if count >= 100:
-            badges[name] = "🟢"  # Badge or
-        elif count >= 50:
-            if name not in badges or badges[name] != "🟢":  # Ne pas descendre de 🟢 à 🟠
-                badges[name] = "🟠"
-    save_badges(badges)
+## Système de badges supprimé pour simplifier et fiabiliser le flux
+
+def normalize_employee_key(name: str) -> str:
+    """Normalise un identifiant d'employé pour correspondre aux clés de stats.json.
+    - met en minuscules
+    - supprime les préfixes de rôle (emt-, int-, cds-, rh-, drh-, med-, ads-)
+    - remplace les espaces par des tirets
+    - retire les crochets/espaces parasites
+    """
+    if not name:
+        return ""
+    s = name.strip().lower()
+    # Retirer crochets type [emt] ou [rh]
+    for br in ["[emt]", "[int]", "[cds]", "[rh]", "[drh]", "[med]", "[ads]"]:
+        s = s.replace(br, "")
+    s = s.replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+    s = s.replace("_", "-")
+    # Supprimer les préfixes connus suivis d'un espace ou d'un tiret
+    prefixes = ["emt-", "emt ", "int-", "int ", "cds-", "cds ", "rh-", "rh ", "drh-", "drh ", "med-", "med ", "ads-", "ads "]
+    for p in prefixes:
+        if s.startswith(p):
+            s = s[len(p):]
+            break
+    # Normaliser espaces -> tirets
+    s = "-".join(filter(None, s.replace("/", " ").replace("|", " ").split()))
+    # Nettoyer tirets multiples
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s
+
+def load_channel_map():
+    return robust_load_json(CHANNEL_MAP_FILE, {})
+
+def save_channel_map(mapping: dict):
+    atomic_write_json(CHANNEL_MAP_FILE, mapping)
+
+def get_channel_employee_key(channel: discord.abc.GuildChannel) -> str:
+    """Retourne la clé employé pour un channel donné en s'appuyant sur un mapping persistant.
+    Si absente, la déduit du nom du channel et persiste le mapping.
+    """
+    mapping = load_channel_map()
+    key = mapping.get(str(channel.id))
+    if key:
+        return key
+    # Déduire via le nom du channel
+    raw = channel.name[1:].strip() if channel.name and len(channel.name) > 1 else channel.name
+    key = normalize_employee_key(raw or "")
+    mapping[str(channel.id)] = key
+    save_channel_map(mapping)
+    return key
 
 def extract_employee_name(channel_name):
-    """Extrait le nom de l'employé du nom du channel"""
+    """Extrait le nom normalisé de l'employé à partir du nom du channel (sans l'emoji)."""
     if len(channel_name) > 1:
-        return channel_name[1:].strip()
+        raw = channel_name[1:].strip()
+        return normalize_employee_key(raw)
     return None
 
 def get_color_emoji(count):
@@ -119,20 +187,10 @@ def get_color_emoji(count):
 
 # --- GESTION DES STATS TAXI ---
 def load_taxi_stats():
-    if not os.path.exists(TAXI_STATS_FILE):
-        return {"count": 0, "week_start": datetime.now().isoformat()}
-    try:
-        with open(TAXI_STATS_FILE, 'r', encoding='utf-8') as f:
-            data = f.read().strip()
-            if not data:
-                return {"count": 0, "week_start": datetime.now().isoformat()}
-            return json.loads(data)
-    except:
-        return {"count": 0, "week_start": datetime.now().isoformat()}
+    return robust_load_json(TAXI_STATS_FILE, {"count": 0, "week_start": datetime.now().isoformat()})
 
 def save_taxi_stats(stats):
-    with open(TAXI_STATS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
+    atomic_write_json(TAXI_STATS_FILE, stats)
 
 def reset_taxi_week():
     """Réinitialise les stats taxi pour la nouvelle semaine"""
@@ -149,7 +207,7 @@ async def on_message(message):
     # Comptage automatique pour les tests d'aptitude taxi (réaction + comptage)
     if message.channel.id == TAXI_CHANNEL_ID:
         # Vérifier si l'auteur a le rôle taxi
-        if any(role.id == TAXI_ROLE_ID for role in message.author.roles):
+        if any(role.id == TAXI_ROLE_ID for role in getattr(message.author, "roles", [])):
             # Ajouter une réaction
             try:
                 await message.add_reaction("✅")
@@ -160,12 +218,6 @@ async def on_message(message):
             taxi_stats = load_taxi_stats()
             taxi_stats["count"] += 1
             save_taxi_stats(taxi_stats)
-    
-    # Comptage des autres messages dans le channel taxi (ancien système)
-    elif message.channel.id == TAXI_CHANNEL_ID:
-        taxi_stats = load_taxi_stats()
-        taxi_stats["count"] += 1
-        save_taxi_stats(taxi_stats)
 
     if not message.attachments or not message.channel.name:
         return
@@ -185,19 +237,20 @@ async def on_message(message):
             processed_reactions.clear()
         
         stats = load_stats()
-        employee_name = extract_employee_name(channel_name)
+        # Utiliser un mapping persistant channel->employé pour garantir la stabilité
+        employee_key = get_channel_employee_key(message.channel)
         
-        if not employee_name:
+        if not employee_key:
             return
         
         # Incrémenter le compteur
-        if employee_name not in stats:
-            stats[employee_name] = 0
+        if employee_key not in stats:
+            stats[employee_key] = 0
         
-        stats[employee_name] += 1
-        current_count = stats[employee_name]
+        stats[employee_key] += 1
+        current_count = stats[employee_key]
         save_stats(stats)
-        update_badges(stats)  # Mettre à jour les badges
+        # Pas de logique de badges: on garde simple et fiable
         
         # Ajouter réaction
         try:
@@ -221,8 +274,8 @@ async def on_message(message):
         if log_channel:
             new_emoji = get_color_emoji(current_count)
             
-            # Message simple et normal
-            message_text = f"✅ **{employee_name}** | {current_count} réas"
+            # Message simple et normal (affiche la clé normalisée)
+            message_text = f"✅ **{employee_key}** | {current_count} réas"
             
             try:
                 await log_channel.send(message_text)
@@ -363,111 +416,7 @@ async def semaine(interaction: discord.Interaction):
     embed_confirm.set_footer(text="🚑 EMS System")
     await interaction.followup.send(embed=embed_confirm)
 
-@bot.tree.command(name="sync_colors", description="Synchronise les couleurs des channels avec les stats actuelles")
-@app_commands.checks.has_permissions(administrator=True)
-async def sync_colors(interaction: discord.Interaction):
-    """Force la mise à jour de la couleur des channels en fonction des stats et badges"""
-    await interaction.response.defer()
-    
-    guild = interaction.guild
-    stats = load_stats()
-    badges = load_badges()
-    
-    updated_count = 0
-    
-    for channel in guild.text_channels:
-        if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
-            # Extraire le nom de l'employé
-            employee_name = channel.name[1:].strip()
-            
-            # Priorité : stats actuelles > badges permanents
-            count = stats.get(employee_name, 0)
-            
-            if count >= 100:
-                new_emoji = "🟢"
-            elif count >= 50:
-                new_emoji = "🟠"
-            elif employee_name in badges:
-                # Utiliser le badge permanent si aucune stat actuelle
-                new_emoji = badges[employee_name]
-            else:
-                new_emoji = "🔴"
-            
-            current_emoji = channel.name[0]
-            
-            # Si l'emoji doit changer
-            if current_emoji != new_emoji:
-                new_name = f"{new_emoji}{channel.name[1:]}"
-                try:
-                    await channel.edit(name=new_name)
-                    updated_count += 1
-                except:
-                    pass
-    
-    embed = discord.Embed(
-        title="🚑 ✅ SYNCHRONISATION EFFECTUÉE",
-        description=f"✅ {updated_count} channel(s) ont été mis à jour\n\nLes couleurs reflètent maintenant :\n• 🟢 = A atteint 100+ réactions\n• 🟠 = A atteint 50+ réactions\n• 🔴 = Moins de 50 réactions",
-        color=EMS_RED
-    )
-    embed.set_footer(text="🚑 EMS System")
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="update_color", description="Mets à jour la couleur d'un channel spécifique")
-@app_commands.checks.has_permissions(administrator=True)
-async def update_color(interaction: discord.Interaction, employee_name: str):
-    """Met à jour la couleur d'un channel d'employé spécifique"""
-    await interaction.response.defer()
-    
-    guild = interaction.guild
-    stats = load_stats()
-    badges = load_badges()
-    
-    # Normaliser le nom de l'employé
-    search_name = employee_name.lower().strip()
-    
-    # Trouver le channel
-    found = False
-    for channel in guild.text_channels:
-        if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
-            channel_employee_name = channel.name[1:].strip().lower()
-            
-            if channel_employee_name == search_name:
-                found = True
-                
-                # Déterminer la nouvelle couleur
-                count = stats.get(channel.name[1:].strip(), 0)
-                
-                if count >= 100:
-                    new_emoji = "🟢"
-                elif count >= 50:
-                    new_emoji = "🟠"
-                elif channel.name[1:].strip() in badges:
-                    new_emoji = badges[channel.name[1:].strip()]
-                else:
-                    new_emoji = "🔴"
-                
-                current_emoji = channel.name[0]
-                
-                if current_emoji != new_emoji:
-                    new_name = f"{new_emoji}{channel.name[1:]}"
-                    try:
-                        await channel.edit(name=new_name)
-                        embed = discord.Embed(
-                            title="✅ COULEUR MISE À JOUR",
-                            description=f"Channel {channel.name[1:].strip()} → {new_emoji}",
-                            color=EMS_RED
-                        )
-                        embed.add_field(name="Réactions", value=f"{count}/100", inline=True)
-                        embed.set_footer(text="🚑 EMS System")
-                        await interaction.followup.send(embed=embed)
-                    except Exception as e:
-                        await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
-                else:
-                    await interaction.followup.send(f"✅ La couleur est déjà correcte ({current_emoji})", ephemeral=True)
-                break
-    
-    if not found:
-        await interaction.followup.send(f"❌ Employé '{employee_name}' non trouvé", ephemeral=True)
+## Commandes de couleur supprimées (sync_colors, update_color)
 
 # --- COMMANDE TAXI ---
 @bot.tree.command(name="taxi", description="Affiche le compteur des tests d'aptitude taxi")
@@ -865,37 +814,7 @@ async def on_ready():
     print(f'✅ Bot: {bot.user}')
     stats = load_stats()
     print(f'📊 Stats: {stats if stats else "Aucune"}')
-    
-    # Synchroniser automatiquement les couleurs au démarrage
-    try:
-        guild = bot.get_guild(config.get("GUILD_ID"))
-        if guild:
-            badges = load_badges()
-            for channel in guild.text_channels:
-                if len(channel.name) > 0 and channel.name[0] in ["🔴", "🟠", "🟢"]:
-                    employee_name = channel.name[1:].strip()
-                    count = stats.get(employee_name, 0)
-                    
-                    if count >= 100:
-                        new_emoji = "🟢"
-                    elif count >= 50:
-                        new_emoji = "🟠"
-                    elif employee_name in badges:
-                        new_emoji = badges[employee_name]
-                    else:
-                        new_emoji = "🔴"
-                    
-                    current_emoji = channel.name[0]
-                    
-                    if current_emoji != new_emoji:
-                        new_name = f"{new_emoji}{channel.name[1:]}"
-                        try:
-                            await channel.edit(name=new_name)
-                            print(f"🔄 Couleur mise à jour : {employee_name}")
-                        except:
-                            pass
-    except Exception as e:
-        print(f"Erreur lors de la synchronisation des couleurs : {e}")
+    # Synchronisation des couleurs au démarrage supprimée
 
 # --- TÂCHE AUTOMATISÉE HEBDOMADAIRE TAXI ---
 @tasks.loop(hours=1)
