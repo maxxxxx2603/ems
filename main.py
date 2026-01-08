@@ -370,7 +370,60 @@ async def semaine(interaction: discord.Interaction):
     
     guild = interaction.guild
     
-    # Réinitialiser stats
+    # 1) Envoyer d'abord le bilan hebdomadaire EMS dans les logs avant reset
+    pre_stats = load_stats()
+    log_channel = bot.get_channel(config.get("LOGS_CHANNEL_ID"))
+    if log_channel and pre_stats:
+        # Ordonner par nombre décroissant
+        ordered = sorted(pre_stats.items(), key=lambda kv: kv[1], reverse=True)
+
+        embeds = []
+        current_embed = None
+        field_count = 0
+        page_index = 1
+        total_reactions = sum(pre_stats.values())
+
+        def pretty_name(key: str) -> str:
+            parts = key.split('-')
+            return ' '.join([p.capitalize() for p in parts])
+
+        for name_key, count in ordered:
+            if current_embed is None or field_count >= 25:
+                if current_embed is not None:
+                    current_embed.set_footer(text=f"🚑 EMS System | Page {page_index}")
+                    embeds.append(current_embed)
+                    page_index += 1
+                current_embed = discord.Embed(
+                    title="📊 BILAN HEBDOMADAIRE EMS",
+                    description="Récapitulatif des réanimations par employé (semaine)",
+                    color=EMS_RED
+                )
+                field_count = 0
+
+            emoji = get_color_emoji(count)
+            display_name = pretty_name(name_key)
+            current_embed.add_field(name=f"{emoji} {display_name}", value=f"{count}/100", inline=False)
+            field_count += 1
+
+        if current_embed is not None:
+            current_embed.set_footer(text=f"🚑 EMS System | Page {page_index}")
+            embeds.append(current_embed)
+
+        summary_embed = discord.Embed(
+            title="📊 RÉSUMÉ SEMAINE EMS",
+            description=f"**Total des réanimations (semaine):** `{total_reactions}` 🎯",
+            color=EMS_RED
+        )
+        summary_embed.set_footer(text="🚑 EMS System")
+        embeds.append(summary_embed)
+
+        for e in embeds:
+            try:
+                await log_channel.send(embed=e)
+            except:
+                pass
+
+    # 2) Réinitialiser stats
     save_stats({})
     
     # Mettre tous les channels en 🔴 et garder la liste pour l'annonce
